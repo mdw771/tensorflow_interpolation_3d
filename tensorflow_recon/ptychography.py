@@ -165,7 +165,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         t00 = time.time()
         this_theta = tf.placeholder(theta.dtype, shape=())
         prj_placeholder = tf.placeholder(prj.dtype, [minibatch_size * hvd.size(), *prj.shape[2:]])
-        pos_placeholder = tf.placeholder(tf.int32, [minibatch_size, 2])
+        pos_placeholder = tf.placeholder(tf.int32, [minibatch_size * hvd.size(), 2])
         prj_dataset = tf.data.Dataset.from_tensor_slices((pos_placeholder, prj_placeholder)).shard(hvd.size(), hvd.rank()).shuffle(
             buffer_size=100).repeat().batch(minibatch_size)
         prj_iter = prj_dataset.make_initializable_iterator()
