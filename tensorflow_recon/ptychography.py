@@ -23,7 +23,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                              dynamic_rate=True, probe_type='gaussian', probe_initial=None, probe_learning_rate=1e-3,
                              pupil_function=None, probe_circ_mask=0.9, **kwargs):
 
-    def rotate_and_project():
+    def rotate_and_project(loss):
 
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
         obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
@@ -69,8 +69,8 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         # j = tf.constant(0)
         # d = lambda j, wavefront: tf.less(j, n_pos)
         # _, wavefront = tf.while_loop(d, process_probe_pos, [j])
-        i = tf.add(i, 1)
-        return (i, loss, obj)
+        # i = tf.add(i, 1)
+        return loss
 
     # import Horovod or its fake shell
     if core_parallelization is False:
@@ -273,7 +273,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             # i = tf.constant(0)
             # c = lambda i, loss, obj: tf.less(i, minibatch_size)
             # _, loss, _ = tf.while_loop(c, rotate_and_project, [i, loss, obj])
-            rotate_and_project()
+            loss = rotate_and_project(loss)
         else:
             loss = rotate_and_project_batch(loss, obj)
         print_flush('Physical model built in {} s.'.format(time.time() - t00))
@@ -386,6 +386,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
             for i_theta in range(n_theta):
 
+                t0_theta = time.time()
                 if mpi4py_is_ok:
                     stop_iteration = False
                 else:
@@ -443,7 +444,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                         _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
 
                 print_flush('Theta {} (rank {}) completed in {} s.'.format(epoch, hvd.rank(), current_loss,
-                                                                                    time.time() - t00))
+                                                                                    time.time() - t0_theta))
 
             # timeline for benchmarking
             tl = timeline.Timeline(run_metadata.step_stats)
