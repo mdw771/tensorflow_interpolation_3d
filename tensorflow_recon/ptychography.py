@@ -167,7 +167,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         prj_placeholder = tf.placeholder(prj.dtype, [minibatch_size * hvd.size(), *prj.shape[2:]])
         prj_dataset = tf.data.Dataset.from_tensor_slices(prj_placeholder).shard(hvd.size(), hvd.rank()).shuffle(
             buffer_size=100).repeat().batch(minibatch_size)
-        prj_iter = prj_dataset.make_one_shot_iterator()
+        prj_iter = prj_dataset.make_initializable_iterator(prj_dataset)
         this_prj_batch = prj_iter.get_next()
         print_flush('Dataset created in {} s.'.format(time.time() - t00))
         comm.Barrier()
@@ -387,6 +387,8 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             for i_theta in range(n_theta):
 
                 t0_theta = time.time()
+
+                sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]]})
                 if mpi4py_is_ok:
                     stop_iteration = False
                 else:
@@ -397,8 +399,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                 if minibatch_size < n_pos:
                     batch_counter = 0
                     for i_batch in range(n_batch):
-                        feed_dict={this_theta: i_theta,
-                                   prj_placeholder: prj[i_theta, ind_list_rand[i_batch]]}
+                        feed_dict={this_theta: i_theta}
                         if n_batch_per_update > 1:
                             t0_batch = time.time()
                             if probe_type == 'optimizable':
