@@ -31,9 +31,9 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             # subobj = obj_rot[int(pos[0]) - probe_size_half[0]:int(pos[0]) - probe_size_half[0] + probe_size[0],
             #                  int(pos[1]) - probe_size_half[1]:int(pos[1]) - probe_size_half[1] + probe_size[1],
             #                  :, :]
-            pos = pos_batch[i_batch, hvd.rank() * minibatch_size + j, :]
-            ind = np.reshape([[x, y] for x in range(int(pos[0]) - probe_size_half[0], int(pos[0]) - probe_size_half[0] + probe_size[0])
-                              for y in range(int(pos[1]) - probe_size_half[1], int(pos[1]) - probe_size_half[1] + probe_size[1])],
+            pos = this_pos_batch[i_batch]
+            ind = tf.reshape([[x, y] for x in tf.range(pos[0] - probe_size_half[0], pos[0] - probe_size_half[0] + probe_size[0])
+                              for y in tf.range(pos[1] - probe_size_half[1], pos[1] - probe_size_half[1] + probe_size[1])],
                              [probe_size[0], probe_size[1], 2])
             subobj = tf.gather_nd(obj_rot, ind)
             # subobj = tf.slice(obj_rot, [int(pos[0]) - probe_size_half[0], int(pos[1]) - probe_size_half[1], 0, 0],
@@ -163,12 +163,13 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
         print_flush('Creating dataset...')
         t00 = time.time()
-        this_theta = tf.placeholder(theta.dtype)
+        this_theta = tf.placeholder(theta.dtype, shape=())
         prj_placeholder = tf.placeholder(prj.dtype, [minibatch_size * hvd.size(), *prj.shape[2:]])
-        prj_dataset = tf.data.Dataset.from_tensor_slices(prj_placeholder).shard(hvd.size(), hvd.rank()).shuffle(
+        pos_placeholder = tf.placeholder(tf.int32, [minibatch_size, 2])
+        prj_dataset = tf.data.Dataset.from_tensor_slices((pos_placeholder, prj_placeholder)).shard(hvd.size(), hvd.rank()).shuffle(
             buffer_size=100).repeat().batch(minibatch_size)
         prj_iter = prj_dataset.make_initializable_iterator()
-        this_prj_batch = prj_iter.get_next()
+        this_pos_batch, this_prj_batch = prj_iter.get_next()
         print_flush('Dataset created in {} s.'.format(time.time() - t00))
         comm.Barrier()
 
@@ -382,13 +383,14 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
             ind_list_rand = np.random.choice(range(n_pos), n_pos, replace=False)
             ind_list_rand = np.split(ind_list_rand, n_batch)
-            pos_batch = probe_pos[ind_list_rand]
+            # pos_batch = probe_pos[ind_list_rand]
 
             for i_theta in range(n_theta):
 
                 t0_theta = time.time()
 
-                sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]]})
+                sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]],
+                                                          pos_placeholder: probe_pos[ind_list_rand[i_batch]]})
                 if mpi4py_is_ok:
                     stop_iteration = False
                 else:
