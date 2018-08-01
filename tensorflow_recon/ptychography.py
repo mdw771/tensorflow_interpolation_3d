@@ -23,15 +23,15 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                              dynamic_rate=True, probe_type='gaussian', probe_initial=None, probe_learning_rate=1e-3,
                              pupil_function=None, probe_circ_mask=0.9, **kwargs):
 
-    def rotate_and_project(i, loss, obj):
+    def rotate_and_project():
 
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
-        obj_rot = tf_rotate(obj, this_theta_batch[i], interpolation='BILINEAR')
-        for j, pos in enumerate(probe_pos):
-            print('Pos: {}'.format(j))
+        obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
+        for j in range(minibatch_size):
             # subobj = obj_rot[int(pos[0]) - probe_size_half[0]:int(pos[0]) - probe_size_half[0] + probe_size[0],
             #                  int(pos[1]) - probe_size_half[1]:int(pos[1]) - probe_size_half[1] + probe_size[1],
             #                  :, :]
+            pos = pos_batch[i_batch, hvd.rank() * minibatch_size + j, :]
             ind = np.reshape([[x, y] for x in range(int(pos[0]) - probe_size_half[0], int(pos[0]) - probe_size_half[0] + probe_size[0])
                               for y in range(int(pos[1]) - probe_size_half[1], int(pos[1]) - probe_size_half[1] + probe_size[1])],
                              [probe_size[0], probe_size[1], 2])
@@ -46,7 +46,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             if probe_circ_mask is not None:
                 exiting = exiting * probe_mask
             exiting = fftshift(tf.fft2d(exiting))
-            loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[i][j])))
+            loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[j])))
         # def process_probe_pos(j):
         #     pos = probe_pos[j]
         #     # subobj = tf.slice(obj_rot, [int(pos[0]) - probe_size_half[0], int(pos[1]) - probe_size_half[1], 0, 0],
@@ -163,16 +163,12 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
         print_flush('Creating dataset...')
         t00 = time.time()
-        # prj_dataset = tf.data.Dataset.from_tensor_slices((theta, prj)).shard(hvd.size(), hvd.rank()).shuffle(
-        #     buffer_size=100).repeat().batch(minibatch_size)
-        # prj_iter = prj_dataset.make_one_shot_iterator()
-        # this_theta_batch, this_prj_batch = prj_iter.get_next()
-        theta_placeholder = tf.placeholder(theta.dtype, minibatch_size * hvd.size())
-        prj_placeholder = tf.placeholder(prj.dtype, [minibatch_size * hvd.size(), *prj.shape[1:]])
-        prj_dataset = tf.data.Dataset.from_tensor_slices((theta_placeholder, prj_placeholder)).shard(hvd.size(), hvd.rank()).shuffle(
+        this_theta = tf.placeholder(theta.dtype)
+        prj_placeholder = tf.placeholder(prj.dtype, [minibatch_size * hvd.size(), *prj.shape[2:]])
+        prj_dataset = tf.data.Dataset.from_tensor_slices(, prj_placeholder).shard(hvd.size(), hvd.rank()).shuffle(
             buffer_size=100).repeat().batch(minibatch_size)
-        prj_iter = prj_dataset.make_initializable_iterator()
-        this_theta_batch, this_prj_batch = prj_iter.get_next()
+        prj_iter = prj_dataset.make_one_shot_iterator()
+        this_prj_batch = prj_iter.get_next()
         print_flush('Dataset created in {} s.'.format(time.time() - t00))
         comm.Barrier()
 
@@ -184,7 +180,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         #     coord_ls = read_all_origin_coords('arrsize_64_64_64_ntheta_500', n_theta)
 
         if minibatch_size is None:
-            minibatch_size = n_theta
+            minibatch_size = n_pos
 
         # unify random seed for all threads
         comm.Barrier()
@@ -205,7 +201,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             else:
                 print_flush('Using supplied initial guess.')
                 sys.stdout.flush()
-                obj_init = np.zeros([dim_y, dim_x, dim_x, 2])
+                obj_init = np.zeros(np.append(obj_size, 2))
                 obj_init[:, :, :, 0] = initial_guess[0]
                 obj_init[:, :, :, 1] = initial_guess[1]
         else:
@@ -277,8 +273,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             # i = tf.constant(0)
             # c = lambda i, loss, obj: tf.less(i, minibatch_size)
             # _, loss, _ = tf.while_loop(c, rotate_and_project, [i, loss, obj])
-            for j in range(minibatch_size):
-                _, loss, obj = rotate_and_project(j, loss, obj)
+            rotate_and_project()
         else:
             loss = rotate_and_project_batch(loss, obj)
         print_flush('Physical model built in {} s.'.format(time.time() - t00))
@@ -373,69 +368,82 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         n_loop = n_epochs if n_epochs != 'auto' else max_nepochs
         if ds_level == 1 and n_epoch_final_pass is not None:
             n_loop = n_epoch_final_pass
-        n_batch = int(np.ceil(float(n_theta) / minibatch_size) / hvd.size())
+        n_batch = int(np.ceil(float(n_pos) / minibatch_size) / hvd.size())
         t00 = time.time()
+
+        # calculate initial loss
+        # sess.run(prj_iter.initializer, feed_dict={theta_placeholder: theta[np.array0],
+        #                                           prj_placeholder: prj[0]})
+        # initial_loss, initial_reg = sess.run([loss, reg_term])
+        # print_flush('Initial loss = {}, initial reg_term = {}.'.format(initial_loss, initial_reg))
+
 
         for epoch in range(n_loop):
 
-            ind_list_rand = np.random.choice(range(n_theta), n_theta, replace=False)
+            ind_list_rand = np.random.choice(range(n_pos), n_pos, replace=False)
             ind_list_rand = np.split(ind_list_rand, n_batch)
+            pos_batch = probe_pos[ind_list_rand]
 
-            if mpi4py_is_ok:
-                stop_iteration = False
-            else:
-                stop_iteration_file = open('.stop_iteration', 'w')
-                stop_iteration_file.write('False')
-                stop_iteration_file.close()
-            i_epoch = i_epoch + 1
-            if minibatch_size < n_theta:
-                batch_counter = 0
-                for i_batch in range(n_batch):
-                    sess.run(prj_iter.initializer, feed_dict={theta_placeholder: theta[ind_list_rand[i_batch]],
-                                                              prj_placeholder: prj[ind_list_rand[i_batch]]})
-                    if n_batch_per_update > 1:
-                        t0_batch = time.time()
-                        if probe_type == 'optimizable':
-                            _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run(
-                                [accum_op, accum_op_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options,
-                                run_metadata=run_metadata)
-                        else:
-                            _, current_loss, current_reg, summary_str = sess.run(
-                                [accum_op, loss, reg_term, merged_summary_op], options=run_options,
-                                run_metadata=run_metadata)
-                        print_flush('Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
-                        batch_counter += 1
-                        if batch_counter == n_batch_per_update or i_batch == n_batch - 1:
-                            sess.run(update_obj)
-                            sess.run(initialize_grad)
-                            if probe_type == 'optimizable':
-                                sess.run(update_probe)
-                                sess.run(initialize_grad_probe)
-                            batch_counter = 0
-                            print_flush('Gradient applied.')
-                    else:
-                        t0_batch = time.time()
-                        if probe_type == 'optimizable':
-                            _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options, run_metadata=run_metadata)
-                            print_flush(
-                                'Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(
-                                    time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
+            for i_theta in range(n_theta):
 
-                        else:
-                            _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata)
-                            print_flush(
-                                'Minibatch done in {} s (rank {}); current loss = {}.'.format(
-                                    time.time() - t0_batch, hvd.rank(), current_loss))
-                    # enforce pupil function
-                    if probe_type == 'optimizable' and pupil_function is not None:
-                        probe_real = probe_real * pupil_function
-                        probe_imag = probe_imag * pupil_function
-
-            else:
-                if probe_type == 'optimizable':
-                    _, _, current_loss, current_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata)
+                if mpi4py_is_ok:
+                    stop_iteration = False
                 else:
-                    _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata)
+                    stop_iteration_file = open('.stop_iteration', 'w')
+                    stop_iteration_file.write('False')
+                    stop_iteration_file.close()
+                i_epoch = i_epoch + 1
+                if minibatch_size < n_pos:
+                    batch_counter = 0
+                    for i_batch in range(n_batch):
+                        feed_dict={this_theta: i_theta,
+                                   prj_placeholder: prj[i_theta, ind_list_rand[i_batch]]}
+                        if n_batch_per_update > 1:
+                            t0_batch = time.time()
+                            if probe_type == 'optimizable':
+                                _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run(
+                                    [accum_op, accum_op_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options,
+                                    run_metadata=run_metadata, feed_dict=feed_dict)
+                            else:
+                                _, current_loss, current_reg, summary_str = sess.run(
+                                    [accum_op, loss, reg_term, merged_summary_op], options=run_options,
+                                    run_metadata=run_metadata, feed_dict=feed_dict)
+                            print_flush('Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
+                            batch_counter += 1
+                            if batch_counter == n_batch_per_update or i_batch == n_batch - 1:
+                                sess.run(update_obj)
+                                sess.run(initialize_grad)
+                                if probe_type == 'optimizable':
+                                    sess.run(update_probe)
+                                    sess.run(initialize_grad_probe)
+                                batch_counter = 0
+                                print_flush('Gradient applied.')
+                        else:
+                            t0_batch = time.time()
+                            if probe_type == 'optimizable':
+                                _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                                print_flush(
+                                    'Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(
+                                        time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
+
+                            else:
+                                _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                                print_flush(
+                                    'Minibatch done in {} s (rank {}); current loss = {}, reg_term = {}.'.format(
+                                        time.time() - t0_batch, hvd.rank(), current_loss, current_reg))
+                        # enforce pupil function
+                        if probe_type == 'optimizable' and pupil_function is not None:
+                            probe_real = probe_real * pupil_function
+                            probe_imag = probe_imag * pupil_function
+
+                else:
+                    if probe_type == 'optimizable':
+                        _, _, current_loss, current_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                    else:
+                        _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+
+                print_flush('Theta {} (rank {}) completed in {} s.'.format(epoch, hvd.rank(), current_loss,
+                                                                                    time.time() - t00))
 
             # timeline for benchmarking
             tl = timeline.Timeline(run_metadata.step_stats)
@@ -513,6 +521,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             #     break
 
             print_flush('Total time: {}'.format(time.time() - t0))
+            comm.Barrier()
         sys.stdout.flush()
 
         if hvd.rank() == 0:
