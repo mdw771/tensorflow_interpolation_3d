@@ -282,20 +282,20 @@ def ifftshift(tensor):
     return tensor
 
 
-def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, pad=None):
+def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, pad=None, obj_shape=None):
 
     if pad is not None:
         grid_delta = tf.pad(grid_delta, pad, 'CONSTANT')
         grid_beta = tf.pad(grid_beta, pad, 'CONSTANT')
 
     voxel_nm = np.array([psize_cm] * 3) * 1.e7
-    wavefront = np.zeros([grid_delta.shape[0], grid_delta.shape[1]])
+    wavefront = np.zeros([obj_shape[0], obj_shape[1]])
     # wavefront = tf.convert_to_tensor(wavefront, dtype=tf.complex64, name='wavefront')
     wavefront = tf.constant(wavefront, dtype='complex64')
     wavefront = wavefront + tf.cast(probe_real, tf.complex64) + 1j * tf.cast(probe_imag, tf.complex64)
     lmbda_nm = 1240. / energy_ev
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
-    size_nm = np.array(grid_delta.get_shape().as_list()) * voxel_nm
+    size_nm = np.array(obj_shape) * voxel_nm
     # wavefront = tf.reshape(wavefront, [1, wavefront.shape[0].value, wavefront.shape[1].value, 1])
 
     n_slice = grid_delta.shape[-1]
@@ -305,7 +305,7 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     grid_beta = tf.cast(grid_beta, tf.complex64)
 
     if h is None:
-        kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_delta.shape)
+        kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, obj_shape)
         h = tf.convert_to_tensor(kernel, dtype=tf.complex64, name='kernel')
         # h = tf.reshape(h, [h.shape[0].value, h.shape[1].value, 1, 1])
     k = 2. * PI * delta_nm / lmbda_nm
@@ -340,9 +340,9 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
         crit_samp = lmbda_nm * dist_nm / l
         algorithm = 'TF' if mean_voxel_nm > crit_samp else 'IR'
         if algorithm == 'TF':
-            h = get_kernel(dist_nm, lmbda_nm, voxel_nm, grid_delta.shape.as_list())
+            h = get_kernel(dist_nm, lmbda_nm, voxel_nm, obj_shape)
         else:
-            h = get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, grid_delta.shape.as_list())
+            h = get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, obj_shape)
         wavefront = fftshift(tf.fft2d(wavefront)) * h
         wavefront = tf.ifft2d(ifftshift(wavefront))
 

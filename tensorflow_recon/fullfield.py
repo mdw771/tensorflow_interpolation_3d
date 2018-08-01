@@ -81,9 +81,9 @@ def reconstruct_fullfield(fname, theta_st=0, theta_end=PI, n_epochs='auto', crit
         obj_rot = tf_rotate(obj, this_theta_batch[i], interpolation='BILINEAR')
         if not cpu_only:
             with tf.device('/gpu:0'):
-                exiting = multislice_propagate(obj_rot[:, :, :, 0], obj_rot[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm)
+                exiting = multislice_propagate(obj_rot[:, :, :, 0], obj_rot[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm, obj_shape=obj_init.shape)
         else:
-            exiting = multislice_propagate(obj_rot[:, :, :, 0], obj_rot[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm)
+            exiting = multislice_propagate(obj_rot[:, :, :, 0], obj_rot[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=free_prop_cm, obj_shape=obj_init.shape)
         loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[i])))
         # i = tf.add(i, 1)
         return (i, loss, obj)

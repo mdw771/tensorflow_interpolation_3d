@@ -28,21 +28,21 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
         obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
         for j in range(minibatch_size):
-            # subobj = obj_rot[int(pos[0]) - probe_size_half[0]:int(pos[0]) - probe_size_half[0] + probe_size[0],
-            #                  int(pos[1]) - probe_size_half[1]:int(pos[1]) - probe_size_half[1] + probe_size[1],
-            #                  :, :]
-            pos = this_pos_batch[i_batch]
-            ind = tf.reshape([[x, y] for x in tf.range(pos[0] - probe_size_half[0], pos[0] - probe_size_half[0] + probe_size[0])
-                              for y in tf.range(pos[1] - probe_size_half[1], pos[1] - probe_size_half[1] + probe_size[1])],
-                             [probe_size[0], probe_size[1], 2])
-            subobj = tf.gather_nd(obj_rot, ind)
-            # subobj = tf.slice(obj_rot, [int(pos[0]) - probe_size_half[0], int(pos[1]) - probe_size_half[1], 0, 0],
+            pos = this_pos_batch[j]
+            subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
+                             pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
+                             :, :]
+            # ind = tf.reshape([[x, y] for x in tf.range(pos[0] - probe_size_half[0], pos[0] - probe_size_half[0] + probe_size[0])
+            #                   for y in tf.range(pos[1] - probe_size_half[1], pos[1] - probe_size_half[1] + probe_size[1])],
+            #                  [probe_size[0], probe_size[1], 2])
+            # subobj = tf.gather_nd(obj_rot, ind)
+            # subobj = tf.slice(obj_rot, [pos[0] - probe_size_half[0], pos[1] - probe_size_half[1], 0, 0],
             #                   [probe_size[0], probe_size[1], obj_size[2], 2])
             if not cpu_only:
                 with tf.device('/gpu:0'):
-                    exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None)
+                    exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None, obj_shape=[*probe_size, obj_size[-1]])
             else:
-                exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None)
+                exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None, obj_shape=[*probe_size, obj_size[-1]])
             if probe_circ_mask is not None:
                 exiting = exiting * probe_mask
             exiting = fftshift(tf.fft2d(exiting))
@@ -388,9 +388,8 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             for i_theta in range(n_theta):
 
                 t0_theta = time.time()
+                probe_pos = np.array(probe_pos)
 
-                sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]],
-                                                          pos_placeholder: probe_pos[ind_list_rand[i_batch]]})
                 if mpi4py_is_ok:
                     stop_iteration = False
                 else:
@@ -401,6 +400,8 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                 if minibatch_size < n_pos:
                     batch_counter = 0
                     for i_batch in range(n_batch):
+                        sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]],
+                                                                  pos_placeholder: probe_pos[np.array(ind_list_rand[i_batch])]})
                         feed_dict={this_theta: i_theta}
                         if n_batch_per_update > 1:
                             t0_batch = time.time()
