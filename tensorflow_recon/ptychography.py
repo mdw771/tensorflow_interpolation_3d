@@ -384,9 +384,10 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             # add random indices if not evenly splittable by all threads
             ind_list_rand = np.random.choice(range(n_pos), n_pos, replace=False)
             if float(n_pos) / minibatch_size / hvd.size() < n_batch:
-                ind_add = np.random.choice(range(n_pos), n_batch * minibatch_size - n_pos, replace=False)
-            ind_list_rand = np.append(ind_list_rand, ind_add)
+                ind_add = np.random.choice(range(n_pos), n_batch * minibatch_size * hvd.size() - n_pos, replace=False)
+                ind_list_rand = np.append(ind_list_rand, ind_add)
             ind_list_rand = np.array_split(ind_list_rand, n_batch)
+            print(len(ind_list_rand), n_pos, n_batch)
             # pos_batch = probe_pos[ind_list_rand]
 
             for i_theta in range(n_theta):
