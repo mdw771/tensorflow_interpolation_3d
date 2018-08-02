@@ -371,22 +371,22 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     return wavefront
 
 
-def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, energy_ev, psize_cm, free_prop_cm=None):
+def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
 
-    minibatch_size = grid_delta_batch.shape[0]
-    grid_shape = grid_delta_batch.get_shape().as_list()[1:]
+    minibatch_size = obj_batch_shape[0]
+    grid_shape = obj_batch_shape[1:]
     voxel_nm = np.array([psize_cm] * 3) * 1.e7
     # wavefront = tf.convert_to_tensor(wavefront, dtype=tf.complex64, name='wavefront')
-    wavefront = tf.ones([minibatch_size, grid_delta_batch.shape[1], grid_delta_batch.shape[2]], dtype='complex64')
+    wavefront = tf.ones([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
     lmbda_nm = 1240. / energy_ev
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
     size_nm = np.array(grid_shape) * voxel_nm
     # wavefront = tf.reshape(wavefront, [1, wavefront.shape[0].value, wavefront.shape[1].value, 1])
 
-    n_slice = grid_delta_batch.shape[-2]
-
+    n_slice = obj_batch_shape.shape[-1]
     delta_nm = voxel_nm[-1]
-    kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_delta_batch.shape[1:-1])
+
+    kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_shape)
     h = tf.convert_to_tensor(kernel, dtype=tf.complex64, name='kernel')
     h = fftshift(h)
     # h = tf.reshape(h, [h.shape[0].value, h.shape[1].value, 1, 1])
