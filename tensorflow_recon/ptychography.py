@@ -26,7 +26,6 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
     def rotate_and_project(loss):
 
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
-        obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
         for j in range(minibatch_size):
             pos = this_pos_batch[j]
             subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
@@ -221,6 +220,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             obj_init[obj_init < 0] = 0
         # dxchange.write_tiff(obj_init[:, :, :, 0], 'cone_256_filled/dump/obj_init', dtype='float32')
         obj = tf.Variable(initial_value=obj_init, dtype=tf.float32)
+        obj_rot = tf_rotate(obj, 0, interpolation='BILINEAR')
         # ====================================================
 
         print_flush('Initialzing probe...')
@@ -393,6 +393,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
                 t0_theta = time.time()
                 probe_pos = np.array(probe_pos)
+                obj_rot = tf_rotate(obj, theta[i_theta], interpolation='BILINEAR')
 
                 if mpi4py_is_ok:
                     stop_iteration = False
@@ -406,7 +407,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                     for i_batch in range(n_batch):
                         sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]],
                                                                   pos_placeholder: probe_pos[np.array(ind_list_rand[i_batch])]})
-                        feed_dict={this_theta: i_theta}
+                        feed_dict={this_theta: theta[i_theta]}
                         if n_batch_per_update > 1:
                             t0_batch = time.time()
                             if probe_type == 'optimizable':
@@ -451,7 +452,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                     else:
                         _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
 
-                print_flush('Theta {} (rank {}) completed in {} s.'.format(epoch, hvd.rank(), current_loss,
+                print_flush('Theta {} (rank {}) completed in {} s.'.format(i_theta, hvd.rank(), current_loss,
                                                                                     time.time() - t0_theta))
 
             # timeline for benchmarking
