@@ -23,9 +23,10 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                              dynamic_rate=True, probe_type='gaussian', probe_initial=None, probe_learning_rate=1e-3,
                              pupil_function=None, probe_circ_mask=0.9, **kwargs):
 
-    def rotate_and_project(loss):
+    def rotate_and_project():
 
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
+        loss_ls = []
         obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
         for j in range(minibatch_size):
             pos = this_pos_batch[j]
@@ -46,8 +47,9 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             if probe_circ_mask is not None:
                 exiting = exiting * probe_mask
             exiting = fftshift(tf.fft2d(exiting))
-            loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[j])))
-        return loss
+            loss_ls.append(tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[j]))))
+
+        return tf.reduce_sum(loss_ls)
 
     # import Horovod or its fake shell
     if core_parallelization is False:
@@ -237,8 +239,6 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         else:
             raise ValueError('Invalid wavefront type. Choose from \'plane\', \'fixed\', \'optimizable\'.')
 
-        loss = tf.constant(0.0)
-
         # generate Fresnel kernel
         voxel_nm = np.array([psize_cm] * 3) * 1.e7 * ds_level
         lmbda_nm = 1240. / energy_ev
@@ -252,7 +252,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             # i = tf.constant(0)
             # c = lambda i, loss, obj: tf.less(i, minibatch_size)
             # _, loss, _ = tf.while_loop(c, rotate_and_project, [i, loss, obj])
-            loss = rotate_and_project(loss)
+            loss = rotate_and_project()
         else:
             loss = rotate_and_project_batch(loss, obj)
         print_flush('Physical model built in {} s.'.format(time.time() - t00))

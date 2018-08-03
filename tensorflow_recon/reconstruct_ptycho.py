@@ -18,7 +18,7 @@ params_adhesin = {'fname': 'data_adhesin_64_1nm_1um.h5',
                   'psize_cm': 0.67e-7,
                   'batch_size': 23,
                   'n_batch_per_update': 1,
-                  'output_folder': None,
+                  'output_folder': 'test',
                   'cpu_only': True,
                   'save_folder': 'adhesin_ptycho',
                   'phantom_path': 'adhesin_ptycho/phantom',
@@ -27,8 +27,8 @@ params_adhesin = {'fname': 'data_adhesin_64_1nm_1um.h5',
                   'save_intermediate': True,
                   'full_intermediate': True,
                   'probe_type': 'gaussian',
-                  'probe_options': {'probe_mag_sigma': 2,
-                                    'probe_phase_sigma': 2,
+                  'probe_options': {'probe_mag_sigma': 10,
+                                    'probe_phase_sigma': 10,
                                     'probe_phase_max': 0.5},
                   'probe_pos': [(y, x) for y in np.linspace(9, 55, 23) for x in np.linspace(9, 55, 23)]}
 
@@ -56,12 +56,12 @@ params_cone = {'fname': 'data_cone_256_1nm_1um.h5',
                'save_intermediate': True,
                'full_intermediate': True,
                'probe_type': 'gaussian',
-               'probe_options': {'probe_mag_sigma': 10,
-                                 'probe_phase_sigma': 10,
+               'probe_options': {'probe_mag_sigma': 40,
+                                 'probe_phase_sigma': 40,
                                  'probe_phase_max': 0.5},
                'probe_pos': [(y, x) for y in np.linspace(36, 220, 23) for x in np.linspace(36, 220, 23)]}
 
-params = params_cone
+params = params_adhesin
 # initial_delta = dxchange.read_tiff('/raid/home/mingdu/programs/beyond_dof/tensorflow_recon/cone_256_filled_ptycho/recon_360_minibatch_1_iter_auto_alphad_1.5e-06_alphab_1.5e-07_rate_1e-07_energy_5000_size_72_ntheta_500_ms_1_cpu_True/current/delta.tiff')
 # initial_beta = initial_delta * 1e-2
 # initial_guess = [initial_delta, initial_beta]
