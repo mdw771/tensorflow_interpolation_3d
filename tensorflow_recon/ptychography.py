@@ -26,6 +26,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
     def rotate_and_project(loss):
 
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
+        obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
         for j in range(minibatch_size):
             pos = this_pos_batch[j]
             subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
@@ -46,29 +47,6 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                 exiting = exiting * probe_mask
             exiting = fftshift(tf.fft2d(exiting))
             loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[j])))
-        # def process_probe_pos(j):
-        #     pos = probe_pos[j]
-        #     # subobj = tf.slice(obj_rot, [int(pos[0]) - probe_size_half[0], int(pos[1]) - probe_size_half[1], 0, 0],
-        #     #                   [probe_size[0], probe_size[1], obj_size[2], 2])
-        #     subobj = obj_rot[int(pos[0]) - probe_size_half[0]:int(pos[0]) - probe_size_half[0] + probe_size[0],
-        #                      int(pos[1]) - probe_size_half[1]:int(pos[1]) - probe_size_half[1] + probe_size[1],
-        #                      :, :]
-        #     if not cpu_only:
-        #         with tf.device('/gpu:0'):
-        #             exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None)
-        #     else:
-        #         exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None)
-        #     if probe_circ_mask is not None:
-        #         exiting = exiting * probe_mask
-        #     exiting = fftshift(tf.fft2d(exiting))
-        #     print(this_prj_batch[i][j])
-        #     loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[i][j])))
-        #     j = tf.add(j, 1)
-        #     return j
-        # j = tf.constant(0)
-        # d = lambda j, wavefront: tf.less(j, n_pos)
-        # _, wavefront = tf.while_loop(d, process_probe_pos, [j])
-        # i = tf.add(i, 1)
         return loss
 
     # import Horovod or its fake shell
@@ -220,7 +198,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             obj_init[obj_init < 0] = 0
         # dxchange.write_tiff(obj_init[:, :, :, 0], 'cone_256_filled/dump/obj_init', dtype='float32')
         obj = tf.Variable(initial_value=obj_init, dtype=tf.float32)
-        obj_rot = tf_rotate(obj, 0, interpolation='BILINEAR')
+        # obj_rot = tf_rotate(obj, 0, interpolation='BILINEAR')
         # ====================================================
 
         print_flush('Initialzing probe...')
@@ -394,7 +372,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
                 t0_theta = time.time()
                 probe_pos = np.array(probe_pos)
-                obj_rot = tf_rotate(obj, theta[i_theta], interpolation='BILINEAR')
+                # obj_rot = tf_rotate(obj, theta[i_theta], interpolation='BILINEAR')
 
                 if mpi4py_is_ok:
                     stop_iteration = False
@@ -453,7 +431,16 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                     else:
                         _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
 
-                print_flush('Theta {} (rank {}) completed in {} s.'.format(i_theta, hvd.rank(), current_loss,
+                ##############################################################################
+                temp_obj = sess.run(obj)
+                temp_obj = np.abs(temp_obj)
+                if full_intermediate:
+                    dxchange.write_tiff(temp_obj[:, :, :, 0],
+                                        fname=os.path.join(output_folder, 'intermediate', 'theta_{}'.format(i_theta)),
+                                        dtype='float32',
+                                        overwrite=True)
+                ###############################################################################
+                print_flush('Theta {} (rank {}) completed in {} s.'.format(i_theta, hvd.rank(),
                                                                                     time.time() - t0_theta))
 
             # timeline for benchmarking
