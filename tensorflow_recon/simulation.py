@@ -8,6 +8,7 @@ import h5py
 from tensorflow.contrib.image import rotate as tf_rotate
 from scipy.ndimage import rotate as sp_rotate
 from scipy.ndimage import gaussian_filter
+from tqdm import tqdm
 import tomopy
 from pyfftw.interfaces.numpy_fft import fft2, ifft2
 from pyfftw.interfaces.numpy_fft import fftshift as np_fftshift
@@ -165,7 +166,7 @@ def create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_p
     def rotate_and_project(theta, obj):
         obj_rot = sp_rotate(obj, theta, reshape=False)
 
-        for k, pos_batch in enumerate(probe_pos_batches):
+        for k, pos_batch in tqdm(enumerate(probe_pos_batches)):
             for j, pos in enumerate(pos_batch):
                 grid_delta_ls = []
                 grid_beta_ls = []
@@ -178,7 +179,7 @@ def create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_p
             grid_delta_ls = np.array(grid_delta_ls)
             grid_beta_ls = np.array(grid_beta_ls)
             exiting = multislice_propagate_batch_numpy(grid_delta_ls, grid_beta_ls, probe_real, probe_imag, energy_ev,
-                                           psize_cm, free_prop_cm=None)
+                                                       psize_cm, free_prop_cm=None)
             if probe_circ_mask is not None:
                 exiting = exiting * probe_mask
             exiting = np_fftshift(fft2(exiting))

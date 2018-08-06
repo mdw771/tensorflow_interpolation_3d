@@ -370,13 +370,14 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     return wavefront
 
 
-def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
+def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
 
     minibatch_size = obj_batch_shape[0]
     grid_shape = obj_batch_shape[1:]
     voxel_nm = np.array([psize_cm] * 3) * 1.e7
     # wavefront = tf.convert_to_tensor(wavefront, dtype=tf.complex64, name='wavefront')
-    wavefront = tf.ones([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
+    wavefront = tf.zeros([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
+    wavefront = wavefront + tf.cast(probe_real, tf.complex64) + 1j * tf.cast(probe_imag, tf.complex64)
     lmbda_nm = 1240. / energy_ev
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
     size_nm = np.array(grid_shape) * voxel_nm
@@ -431,12 +432,14 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, energy_ev, psi
     return wavefront
 
 
-def multislice_propagate_batch_numpy(grid_delta_batch, grid_beta_batch, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
+def multislice_propagate_batch_numpy(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
 
     minibatch_size = obj_batch_shape[0]
     grid_shape = obj_batch_shape[1:]
     voxel_nm = np.array([psize_cm] * 3) * 1.e7
-    wavefront = np.ones([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
+    wavefront = np.zeros([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
+    wavefront += (probe_real + 1j * probe_imag)
+
     lmbda_nm = 1240. / energy_ev
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
     size_nm = np.array(grid_shape) * voxel_nm
