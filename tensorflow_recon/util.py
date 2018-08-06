@@ -383,7 +383,7 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, pr
     size_nm = np.array(grid_shape) * voxel_nm
     # wavefront = tf.reshape(wavefront, [1, wavefront.shape[0].value, wavefront.shape[1].value, 1])
 
-    n_slice = obj_batch_shape.shape[-1]
+    n_slice = obj_batch_shape[-1]
     delta_nm = voxel_nm[-1]
 
     kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_shape)
@@ -444,7 +444,7 @@ def multislice_propagate_batch_numpy(grid_delta_batch, grid_beta_batch, probe_re
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
     size_nm = np.array(grid_shape) * voxel_nm
 
-    n_slice = obj_batch_shape.shape[-1]
+    n_slice = obj_batch_shape[-1]
     delta_nm = voxel_nm[-1]
 
     h = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_shape)
