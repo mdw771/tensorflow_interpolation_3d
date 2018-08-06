@@ -25,13 +25,13 @@ phantom_path = 'cone_256_filled_ptycho/phantom'
 save_folder = 'cone_256_filled_ptycho'
 # save_folder = 'adhesin_ptycho'
 # fname = 'data_adhesin_64_1nm_1um.h5'
-fname = 'data_adhesin_64_1nm_1um.h5'
+fname = 'data_adhesin_256_1nm_1um.h5'
 # probe_size = [72, 72]
 probe_size = [18, 18]
 # probe_mag_sigma = 10
-probe_mag_sigma = 2
+probe_mag_sigma = 10
 # probe_phase_sigma = 10
-probe_phase_sigma = 2
+probe_phase_sigma = 10
 probe_phase_max = 0.5
 # ============================================
 
@@ -42,7 +42,9 @@ probe_phase_max = 0.5
 # wavefront_initial = [probe_mag, probe_phase]
 
 # probe_pos = [(y, x) for y in np.linspace(36, 220, 23) for x in np.linspace(36, 220, 23)]
-probe_pos = [(y, x) for y in np.linspace(9, 55, 23) for x in np.linspace(9, 55, 23)]
+# probe_pos = [(y, x) for y in np.linspace(9, 55, 23) for x in np.linspace(9, 55, 23)]
+probe_pos = [(y, x) for y in np.linspace(18, 120, 52) for x in np.linspace(54, 198, 72)] + \
+            [(y, x) for y in np.linspace(120, 222, 52) for x in np.linspace(22, 230, 104)]
 
 create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_path, save_folder, fname, probe_pos,
                                      probe_type='gaussian', probe_size=probe_size, theta_st=theta_st, theta_end=theta_end,
