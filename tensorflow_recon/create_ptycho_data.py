@@ -1,6 +1,6 @@
 import numpy as np
 
-from simulation import create_ptychography_data
+from simulation import *
 
 
 # ============================================
@@ -44,6 +44,6 @@ probe_phase_max = 0.5
 # probe_pos = [(y, x) for y in np.linspace(36, 220, 23) for x in np.linspace(36, 220, 23)]
 probe_pos = [(y, x) for y in np.linspace(9, 55, 23) for x in np.linspace(9, 55, 23)]
 
-create_ptychography_data(energy_ev, psize_cm, n_theta, phantom_path, save_folder, fname, probe_pos,
-                         probe_type='gaussian', probe_size=probe_size, theta_st=theta_st, theta_end=theta_end,
-                         probe_mag_sigma=10, probe_phase_sigma=10, probe_phase_max=0.5, probe_circ_mask=None)
+create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_path, save_folder, fname, probe_pos,
+                                     probe_type='gaussian', probe_size=probe_size, theta_st=theta_st, theta_end=theta_end,
+                                     probe_mag_sigma=10, probe_phase_sigma=10, probe_phase_max=0.5, probe_circ_mask=None)
