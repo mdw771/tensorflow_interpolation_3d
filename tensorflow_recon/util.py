@@ -5,8 +5,9 @@ import dxchange
 import h5py
 import matplotlib.pyplot as plt
 import matplotlib
-from pyfftw.interfaces.numpy_fft import fftn
+from pyfftw.interfaces.numpy_fft import fft2, ifft2
 from pyfftw.interfaces.numpy_fft import fftshift as np_fftshift
+from pyfftw.interfaces.numpy_fft import ifftshift as np_ifftshift
 import warnings
 try:
     from constants import *
@@ -306,8 +307,6 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
 
     if h is None:
         kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, obj_shape)
-        h = tf.convert_to_tensor(kernel, dtype=tf.complex64, name='kernel')
-        # h = tf.reshape(h, [h.shape[0].value, h.shape[1].value, 1, 1])
     k = 2. * PI * delta_nm / lmbda_nm
 
     def modulate_and_propagate(i, wavefront):
@@ -428,6 +427,45 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, energy_ev, psi
         else:
             h = get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, grid_shape)
         wavefront = tf.ifft2d(ifftshift(fftshift(tf.fft2d(wavefront)) * h))
+
+    return wavefront
+
+
+def multislice_propagate_batch_numpy(grid_delta_batch, grid_beta_batch, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
+
+    minibatch_size = obj_batch_shape[0]
+    grid_shape = obj_batch_shape[1:]
+    voxel_nm = np.array([psize_cm] * 3) * 1.e7
+    wavefront = np.ones([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
+    lmbda_nm = 1240. / energy_ev
+    mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
+    size_nm = np.array(grid_shape) * voxel_nm
+
+    n_slice = obj_batch_shape.shape[-1]
+    delta_nm = voxel_nm[-1]
+
+    h = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_shape)
+    h = fftshift(h)
+    # h = tf.reshape(h, [h.shape[0].value, h.shape[1].value, 1, 1])
+    k = 2. * PI * delta_nm / lmbda_nm
+
+    for i in range(n_slice):
+        delta_slice = grid_delta_batch[:, :, :, i]
+        beta_slice = grid_beta_batch[:, :, :, i]
+        c = np.exp(1j * k * delta_slice) * np.exp(-k * beta_slice)
+        wavefront = wavefront * c
+        wavefront = ifft2(fft2(wavefront) * h)
+
+    if free_prop_cm is not None:
+        dist_nm = free_prop_cm * 1e7
+        l = np.prod(size_nm)**(1. / 3)
+        crit_samp = lmbda_nm * dist_nm / l
+        algorithm = 'TF' if mean_voxel_nm > crit_samp else 'IR'
+        if algorithm == 'TF':
+            h = get_kernel(dist_nm, lmbda_nm, voxel_nm, grid_shape)
+        else:
+            h = get_kernel_ir(dist_nm, lmbda_nm, voxel_nm, grid_shape)
+        wavefront = ifft2(np_ifftshift(np_fftshift(fft2(wavefront)) * h))
 
     return wavefront
 

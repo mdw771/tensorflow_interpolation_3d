@@ -355,23 +355,23 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         # initial_loss, initial_reg = sess.run([loss, reg_term])
         # print_flush('Initial loss = {}, initial reg_term = {}.'.format(initial_loss, initial_reg))
 
-
+        probe_pos = np.array(probe_pos)
         for epoch in range(n_loop):
-
-            # add random indices if not evenly splittable by all threads
-            ind_list_rand = np.random.choice(range(n_pos), n_pos, replace=False)
-            # ind_list_rand = np.arange(n_pos, dtype=int)
-            if float(n_pos) / minibatch_size / hvd.size() < n_batch:
-                ind_add = np.random.choice(range(n_pos), n_batch * minibatch_size * hvd.size() - n_pos, replace=False)
-                ind_list_rand = np.append(ind_list_rand, ind_add)
-            ind_list_rand = np.array_split(ind_list_rand, n_batch)
-            # pos_batch = probe_pos[ind_list_rand]
-            print(ind_list_rand)
 
             for i_theta in range(n_theta):
 
+                # add random indices if not evenly splittable by all threads
+                ind_list_rand = np.random.choice(range(n_pos), n_pos, replace=False)
+                # ind_list_rand = np.arange(n_pos, dtype=int)
+                if float(n_pos) / minibatch_size / hvd.size() < n_batch:
+                    ind_add = np.random.choice(range(n_pos), n_batch * minibatch_size * hvd.size() - n_pos,
+                                               replace=False)
+                    ind_list_rand = np.append(ind_list_rand, ind_add)
+                ind_list_rand = np.array_split(ind_list_rand, n_batch)
+                # pos_batch = probe_pos[ind_list_rand]
+                print(ind_list_rand)
+
                 t0_theta = time.time()
-                probe_pos = np.array(probe_pos)
                 # obj_rot = tf_rotate(obj, theta[i_theta], interpolation='BILINEAR')
 
                 if mpi4py_is_ok:
