@@ -167,9 +167,9 @@ def create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_p
         obj_rot = sp_rotate(obj, theta, reshape=False)
 
         for k, pos_batch in tqdm(enumerate(probe_pos_batches)):
+            grid_delta_ls = []
+            grid_beta_ls = []
             for j, pos in enumerate(pos_batch):
-                grid_delta_ls = []
-                grid_beta_ls = []
                 pos = np.array(pos, dtype=int)
                 subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
                                  pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
@@ -180,8 +180,7 @@ def create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_p
             grid_beta_ls = np.array(grid_beta_ls)
             exiting = multislice_propagate_batch_numpy(grid_delta_ls, grid_beta_ls, probe_real, probe_imag, energy_ev,
                                                        psize_cm, free_prop_cm=None,
-                                                       obj_batch_shape=[pos_batch.size, probe_size[0], probe_size[1], grid_delta.shape[-1]])
-            print(exiting.shape)
+                                                       obj_batch_shape=[len(pos_batch), probe_size[0], probe_size[1], grid_delta.shape[-1]])
             if probe_circ_mask is not None:
                 exiting = exiting * probe_mask
             exiting = np_fftshift(fft2(exiting))
