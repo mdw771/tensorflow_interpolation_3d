@@ -59,7 +59,9 @@ params_cone = {'fname': 'data_cone_256_1nm_1um.h5',
                'probe_options': {'probe_mag_sigma': 10,
                                  'probe_phase_sigma': 10,
                                  'probe_phase_max': 0.5},
-               'probe_pos': [(y, x) for y in np.linspace(18, 222, 104) for x in np.linspace(22, 230, 104)]}
+               'probe_pos': [(y, x) for y in np.linspace(18, 120, 52) for x in np.linspace(54, 198, 72)] +
+                            [(y, x) for y in np.linspace(120, 222, 52) for x in np.linspace(22, 230, 104)]
+               }
 
 params = params_adhesin
 # initial_delta = dxchange.read_tiff('/raid/home/mingdu/programs/beyond_dof/tensorflow_recon/cone_256_filled_ptycho/recon_360_minibatch_1_iter_auto_alphad_1.5e-06_alphab_1.5e-07_rate_1e-07_energy_5000_size_72_ntheta_500_ms_1_cpu_True/current/delta.tiff')
