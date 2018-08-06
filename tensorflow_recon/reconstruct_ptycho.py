@@ -40,7 +40,7 @@ params_cone = {'fname': 'data_cone_256_1nm_1um.h5',
                'alpha_d': 1.e-9,
                'alpha_b': 1.e-10,
                'gamma': 0,
-               'probe_size': (72, 72),
+               'probe_size': (18, 18),
                'learning_rate': 1e-7,
                'center': 128,
                'energy_ev': 5000,
@@ -56,10 +56,10 @@ params_cone = {'fname': 'data_cone_256_1nm_1um.h5',
                'save_intermediate': True,
                'full_intermediate': True,
                'probe_type': 'gaussian',
-               'probe_options': {'probe_mag_sigma': 40,
-                                 'probe_phase_sigma': 40,
+               'probe_options': {'probe_mag_sigma': 10,
+                                 'probe_phase_sigma': 10,
                                  'probe_phase_max': 0.5},
-               'probe_pos': [(y, x) for y in np.linspace(36, 220, 23) for x in np.linspace(36, 220, 23)]}
+               'probe_pos': [(y, x) for y in np.linspace(18, 222, 104) for x in np.linspace(22, 230, 104)]}
 
 params = params_adhesin
 # initial_delta = dxchange.read_tiff('/raid/home/mingdu/programs/beyond_dof/tensorflow_recon/cone_256_filled_ptycho/recon_360_minibatch_1_iter_auto_alphad_1.5e-06_alphab_1.5e-07_rate_1e-07_energy_5000_size_72_ntheta_500_ms_1_cpu_True/current/delta.tiff')

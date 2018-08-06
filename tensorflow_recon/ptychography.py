@@ -145,8 +145,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         this_theta = tf.placeholder(theta.dtype, shape=())
         prj_placeholder = tf.placeholder(prj.dtype, [minibatch_size * hvd.size(), *prj.shape[2:]])
         pos_placeholder = tf.placeholder(tf.int32, [minibatch_size * hvd.size(), 2])
-        prj_dataset = tf.data.Dataset.from_tensor_slices((pos_placeholder, prj_placeholder)).shard(hvd.size(), hvd.rank()).shuffle(
-            buffer_size=100).repeat().batch(minibatch_size)
+        prj_dataset = tf.data.Dataset.from_tensor_slices((pos_placeholder, prj_placeholder)).shard(hvd.size(), hvd.rank()).batch(minibatch_size)
         prj_iter = prj_dataset.make_initializable_iterator()
         this_pos_batch, this_prj_batch = prj_iter.get_next()
         print_flush('Dataset created in {} s.'.format(time.time() - t00))
@@ -299,8 +298,8 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             update_obj = optimizer.apply_gradients([(accum_grad / n_batch_per_update, this_grad[1])])
         else:
             optimizer = optimizer.minimize(loss, var_list=[obj])
-        if minibatch_size >= n_theta:
-            optimizer = optimizer.minimize(loss, var_list=[obj])
+        # if minibatch_size >= n_pos:
+        #     optimizer = optimizer.minimize(loss, var_list=[obj])
         # hooks = [hvd.BroadcastGlobalVariablesHook(0)]
         print_flush('Optimizer created in {} s.'.format(time.time() - t00))
 
@@ -361,12 +360,13 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
             # add random indices if not evenly splittable by all threads
             ind_list_rand = np.random.choice(range(n_pos), n_pos, replace=False)
+            # ind_list_rand = np.arange(n_pos, dtype=int)
             if float(n_pos) / minibatch_size / hvd.size() < n_batch:
                 ind_add = np.random.choice(range(n_pos), n_batch * minibatch_size * hvd.size() - n_pos, replace=False)
                 ind_list_rand = np.append(ind_list_rand, ind_add)
             ind_list_rand = np.array_split(ind_list_rand, n_batch)
-            print(len(ind_list_rand), n_pos, n_batch)
             # pos_batch = probe_pos[ind_list_rand]
+            print(ind_list_rand)
 
             for i_theta in range(n_theta):
 
@@ -381,55 +381,61 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                     stop_iteration_file.write('False')
                     stop_iteration_file.close()
                 i_epoch = i_epoch + 1
-                if minibatch_size < n_pos:
-                    batch_counter = 0
-                    for i_batch in range(n_batch):
-                        sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]],
-                                                                  pos_placeholder: probe_pos[np.array(ind_list_rand[i_batch])]})
-                        feed_dict={this_theta: theta[i_theta]}
-                        if n_batch_per_update > 1:
-                            t0_batch = time.time()
-                            if probe_type == 'optimizable':
-                                _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run(
-                                    [accum_op, accum_op_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options,
-                                    run_metadata=run_metadata, feed_dict=feed_dict)
-                            else:
-                                _, current_loss, current_reg, summary_str = sess.run(
-                                    [accum_op, loss, reg_term, merged_summary_op], options=run_options,
-                                    run_metadata=run_metadata, feed_dict=feed_dict)
-                            print_flush('Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
-                            batch_counter += 1
-                            if batch_counter == n_batch_per_update or i_batch == n_batch - 1:
-                                sess.run(update_obj)
-                                sess.run(initialize_grad)
-                                if probe_type == 'optimizable':
-                                    sess.run(update_probe)
-                                    sess.run(initialize_grad_probe)
-                                batch_counter = 0
-                                print_flush('Gradient applied.')
+
+                batch_counter = 0
+                for i_batch in range(n_batch):
+                    sess.run(prj_iter.initializer, feed_dict={prj_placeholder: prj[i_theta, ind_list_rand[i_batch]],
+                                                              pos_placeholder: probe_pos[np.array(ind_list_rand[i_batch])]})
+                    # print(ind_list_rand[i_batch])
+                    # print(theta[i_theta])
+                    # poss, pat = sess.run([this_pos_batch, this_prj_batch])
+                    # dxchange.write_tiff(abs(pat[0]), os.path.join(output_folder, 'test', 'pat'), dtype='float32')
+                    feed_dict={this_theta: theta[i_theta]}
+                    if n_batch_per_update > 1:
+                        t0_batch = time.time()
+                        if probe_type == 'optimizable':
+                            _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run(
+                                [accum_op, accum_op_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options,
+                                run_metadata=run_metadata, feed_dict=feed_dict)
                         else:
-                            t0_batch = time.time()
+                            _, current_loss, current_reg, summary_str = sess.run(
+                                [accum_op, loss, reg_term, merged_summary_op], options=run_options,
+                                run_metadata=run_metadata, feed_dict=feed_dict)
+                        print_flush('Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
+                        batch_counter += 1
+                        if batch_counter == n_batch_per_update or i_batch == n_batch - 1:
+                            sess.run(update_obj)
+                            sess.run(initialize_grad)
                             if probe_type == 'optimizable':
-                                _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
-                                print_flush(
-                                    'Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(
-                                        time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
-
-                            else:
-                                _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
-                                print_flush(
-                                    'Minibatch done in {} s (rank {}); current loss = {}, reg_term = {}.'.format(
-                                        time.time() - t0_batch, hvd.rank(), current_loss, current_reg))
-                        # enforce pupil function
-                        if probe_type == 'optimizable' and pupil_function is not None:
-                            probe_real = probe_real * pupil_function
-                            probe_imag = probe_imag * pupil_function
-
-                else:
-                    if probe_type == 'optimizable':
-                        _, _, current_loss, current_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                                sess.run(update_probe)
+                                sess.run(initialize_grad_probe)
+                            batch_counter = 0
+                            print_flush('Gradient applied.')
                     else:
-                        _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                        t0_batch = time.time()
+                        if probe_type == 'optimizable':
+                            _, _, current_loss, current_reg, current_probe_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, probe_reg, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                            print_flush(
+                                'Minibatch done in {} s (rank {}); current loss = {}, probe reg. = {}.'.format(
+                                    time.time() - t0_batch, hvd.rank(), current_loss, current_probe_reg))
+
+                        else:
+                            _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                            print_flush(
+                                'Minibatch done in {} s (rank {}); current loss = {}, reg_term = {}.'.format(
+                                    time.time() - t0_batch, hvd.rank(), current_loss, current_reg))
+                    # enforce pupil function
+                    if probe_type == 'optimizable' and pupil_function is not None:
+                        probe_real = probe_real * pupil_function
+                        probe_imag = probe_imag * pupil_function
+
+                # if probe_type == 'optimizable':
+                #     _, _, current_loss, current_reg, summary_str = sess.run([optimizer, optimizer_probe, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                # else:
+                #     _, current_loss, current_reg, summary_str = sess.run([optimizer, loss, reg_term, merged_summary_op], options=run_options, run_metadata=run_metadata, feed_dict=feed_dict)
+                #     print_flush(
+                #         'Minibatch done in {} s (rank {}); current loss = {}, reg_term = {}.'.format(
+                #             time.time() - t0_batch, hvd.rank(), current_loss, current_reg))
 
                 ##############################################################################
                 temp_obj = sess.run(obj)
