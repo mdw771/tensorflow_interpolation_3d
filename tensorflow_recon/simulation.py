@@ -164,19 +164,19 @@ def create_ptychography_data_batch_numpy(energy_ev, psize_cm, n_theta, phantom_p
     """
     def rotate_and_project(theta, obj):
         obj_rot = sp_rotate(obj, theta, reshape=False)
-        grid_delta_ls = []
-        grid_beta_ls = []
 
         for k, pos_batch in enumerate(probe_pos_batches):
             for j, pos in enumerate(pos_batch):
+                grid_delta_ls = []
+                grid_beta_ls = []
                 pos = np.array(pos, dtype=int)
                 subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
                                  pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
                                  :, :]
                 grid_delta_ls.append(subobj[:, :, :, 0])
                 grid_beta_ls.append(subobj[:, :, :, 1])
-                grid_delta_ls = np.array(grid_delta_ls)
-                grid_beta_ls = np.array(grid_beta_ls)
+            grid_delta_ls = np.array(grid_delta_ls)
+            grid_beta_ls = np.array(grid_beta_ls)
             exiting = multislice_propagate_batch_numpy(grid_delta_ls, grid_beta_ls, probe_real, probe_imag, energy_ev,
                                            psize_cm, free_prop_cm=None)
             if probe_circ_mask is not None:
