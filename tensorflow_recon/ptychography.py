@@ -28,28 +28,22 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
         loss_ls = []
         obj_rot = tf_rotate(obj, this_theta, interpolation='BILINEAR')
+        subobj_ls = []
         for j in range(minibatch_size):
             pos = this_pos_batch[j]
             subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
                              pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
                              :, :]
-            # ind = tf.reshape([[x, y] for x in tf.range(pos[0] - probe_size_half[0], pos[0] - probe_size_half[0] + probe_size[0])
-            #                   for y in tf.range(pos[1] - probe_size_half[1], pos[1] - probe_size_half[1] + probe_size[1])],
-            #                  [probe_size[0], probe_size[1], 2])
-            # subobj = tf.gather_nd(obj_rot, ind)
-            # subobj = tf.slice(obj_rot, [pos[0] - probe_size_half[0], pos[1] - probe_size_half[1], 0, 0],
-            #                   [probe_size[0], probe_size[1], obj_size[2], 2])
-            if not cpu_only:
-                with tf.device('/gpu:0'):
-                    exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None, obj_shape=[*probe_size, obj_size[-1]])
-            else:
-                exiting = multislice_propagate(subobj[:, :, :, 0], subobj[:, :, :, 1], probe_real, probe_imag, energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None, obj_shape=[*probe_size, obj_size[-1]])
-            if probe_circ_mask is not None:
-                exiting = exiting * probe_mask
-            exiting = fftshift(tf.fft2d(exiting))
-            loss_ls.append(tf.reduce_mean(tf.squared_difference(tf.abs(exiting), tf.abs(this_prj_batch[j]))))
+            subobj_ls.append(subobj)
+        subobj_ls = tf.stack(subobj_ls)
+        exiting_ls = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
+                                                energy_ev, psize_cm * ds_level, h=h, free_prop_cm=None,
+                                                obj_batch_shape=[minibatch_size, *probe_size, obj_size[-1]])
+        if probe_circ_mask is not None:
+            exiting_ls = exiting_ls * probe_mask
+        exiting_ls = fftshift(tf.fft2d(exiting_ls))
+        return tf.reduce_mean(tf.squared_difference(tf.abs(exiting_ls), tf.abs(this_prj_batch)))
 
-        return tf.reduce_sum(loss_ls)
 
     # import Horovod or its fake shell
     if core_parallelization is False:
@@ -248,9 +242,6 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         print_flush('Building physical model...')
         t00 = time.time()
         if cpu_only:
-            # i = tf.constant(0)
-            # c = lambda i, loss, obj: tf.less(i, minibatch_size)
-            # _, loss, _ = tf.while_loop(c, rotate_and_project, [i, loss, obj])
             loss = rotate_and_project()
         else:
             loss = rotate_and_project_batch(loss, obj)
@@ -288,7 +279,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             modifier = tf.exp(-i_epoch) * (n_batch_per_update - 1) + 1
             optimizer = tf.train.AdamOptimizer(learning_rate=float(learning_rate) * hvd.size() * modifier)
         else:
-            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate * hvd.size())
+            optimizer = tf.train.AdamOptimizer(learning_rate=float(learning_rate) * hvd.size())
         optimizer = hvd.DistributedOptimizer(optimizer, name='distopt_{}'.format(ds_level))
         if n_batch_per_update > 1:
             this_grad = optimizer.compute_gradients(loss, obj)
@@ -297,7 +288,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
             accum_op = accum_grad.assign_add(this_grad[0])
             update_obj = optimizer.apply_gradients([(accum_grad / n_batch_per_update, this_grad[1])])
         else:
-            optimizer = optimizer.minimize(loss, var_list=[obj])
+            optimizer = optimizer.minimize(loss)
         # if minibatch_size >= n_pos:
         #     optimizer = optimizer.minimize(loss, var_list=[obj])
         # hooks = [hvd.BroadcastGlobalVariablesHook(0)]
@@ -442,7 +433,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
                 temp_obj = np.abs(temp_obj)
                 if full_intermediate:
                     dxchange.write_tiff(temp_obj[:, :, :, 0],
-                                        fname=os.path.join(output_folder, 'intermediate', 'theta_{}'.format(i_theta)),
+                                        fname=os.path.join(output_folder, 'intermediate', 'theta_{}_rank_{}'.format(i_theta, hvd.rank())),
                                         dtype='float32',
                                         overwrite=True)
                 ###############################################################################

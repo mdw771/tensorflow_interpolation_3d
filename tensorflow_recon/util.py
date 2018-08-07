@@ -306,7 +306,7 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     grid_beta = tf.cast(grid_beta, tf.complex64)
 
     if h is None:
-        kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, obj_shape)
+        h = get_kernel(delta_nm, lmbda_nm, voxel_nm, obj_shape)
     k = 2. * PI * delta_nm / lmbda_nm
 
     def modulate_and_propagate(i, wavefront):
@@ -370,14 +370,14 @@ def multislice_propagate(grid_delta, grid_beta, probe_real, probe_imag, energy_e
     return wavefront
 
 
-def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, free_prop_cm=None, obj_batch_shape=None):
+def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, probe_imag, energy_ev, psize_cm, h=None, free_prop_cm=None, obj_batch_shape=None):
 
     minibatch_size = obj_batch_shape[0]
     grid_shape = obj_batch_shape[1:]
     voxel_nm = np.array([psize_cm] * 3) * 1.e7
     # wavefront = tf.convert_to_tensor(wavefront, dtype=tf.complex64, name='wavefront')
     wavefront = tf.zeros([minibatch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
-    wavefront = wavefront + tf.cast(probe_real, tf.complex64) + 1j * tf.cast(probe_imag, tf.complex64)
+    wavefront = wavefront + (tf.cast(probe_real, tf.complex64) + 1j * tf.cast(probe_imag, tf.complex64))
     lmbda_nm = 1240. / energy_ev
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
     size_nm = np.array(grid_shape) * voxel_nm
@@ -386,8 +386,9 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, pr
     n_slice = obj_batch_shape[-1]
     delta_nm = voxel_nm[-1]
 
-    kernel = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_shape)
-    h = tf.convert_to_tensor(kernel, dtype=tf.complex64, name='kernel')
+    if h is None:
+        h = get_kernel(delta_nm, lmbda_nm, voxel_nm, grid_shape)
+        h = tf.convert_to_tensor(h, dtype=tf.complex64, name='kernel')
     h = fftshift(h)
     # h = tf.reshape(h, [h.shape[0].value, h.shape[1].value, 1, 1])
     k = 2. * PI * delta_nm / lmbda_nm
