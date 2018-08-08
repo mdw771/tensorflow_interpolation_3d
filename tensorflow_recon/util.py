@@ -249,7 +249,8 @@ def realign_image(arr, shift):
 
 def fftshift(tensor):
     ndim = len(tensor.shape)
-    for i in range(ndim):
+    dim_ls = range(ndim - 2, ndim)
+    for i in dim_ls:
         n = tensor.shape[i].value
         p2 = (n+1) // 2
         begin1 = [0] * ndim
@@ -267,7 +268,8 @@ def fftshift(tensor):
 
 def ifftshift(tensor):
     ndim = len(tensor.shape)
-    for i in range(ndim):
+    dim_ls = range(ndim - 2, ndim)
+    for i in dim_ls:
         n = tensor.shape[i].value
         p2 = n - (n + 1) // 2
         begin1 = [0] * ndim
