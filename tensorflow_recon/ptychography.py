@@ -29,43 +29,43 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
         obj_rot = tf_rotate(obj, this_theta_batch[i], interpolation='BILINEAR')
         exiting_ls = []
-        subobj_batch_ls = []
+        subobj_ls = []
 
-        for k, pos_batch in enumerate(probe_pos_batch_ls):
-            subobj_ls = []
-            for j, pos in enumerate(pos_batch):
-                # pos = [int(x) for x in pos]
-                # ind = np.reshape([[x, y] for x in range(int(pos[0]) - probe_size_half[0], int(pos[0]) - probe_size_half[0] + probe_size[0])
-                #                   for y in range(int(pos[1]) - probe_size_half[1], int(pos[1]) - probe_size_half[1] + probe_size[1])],
-                #                  [probe_size[0], probe_size[1], 2])
-                # subobj = tf.gather_nd(obj_rot, ind)
-                subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
-                         pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
-                         :, :]
-                subobj_ls.append(subobj)
+        for j, pos in enumerate(probe_pos):
+            pos = [int(x) for x in pos]
+            # ind = np.reshape([[x, y] for x in range(int(pos[0]) - probe_size_half[0], int(pos[0]) - probe_size_half[0] + probe_size[0])
+            #                   for y in range(int(pos[1]) - probe_size_half[1], int(pos[1]) - probe_size_half[1] + probe_size[1])],
+            #                  [probe_size[0], probe_size[1], 2])
+            # subobj = tf.gather_nd(obj_rot, ind)
+            subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
+                     pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
+                     :, :]
+            subobj_ls.append(subobj)
 
-            subobj_ls = tf.stack(subobj_ls)
-            subobj_batch_ls.append(subobj_ls)
-        subobj_batch_ls = tf.stack(subobj_ls)
+        subobj_ls = tf.stack(subobj_ls)
 
-        def forward_batch(k, exiting_ls):
-            subobj_ls = subobj_batch_ls[k]
-            exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real,
+        def forward_batch(k, ind, loss):
+            this_batch_size = tf.minimum(n_dp_batch, n_pos - ind)
+            subobj_batch = subobj_ls[ind:ind+this_batch_size]
+            exiting = multislice_propagate_batch(subobj_batch[:, :, :, :, 0], subobj_batch[:, :, :, :, 1], probe_real,
                                                  probe_imag,
                                                  energy_ev, psize_cm * ds_level, h=h, free_prop_cm='inf',
-                                                 obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
-            exiting_ls[]
+                                                 obj_batch_shape=[this_batch_size, *probe_size, obj_size[-1]])
+            loss += tf.reduce_mean(tf.squared_difference(tf.abs(exiting),
+                                                         tf.abs(this_prj_batch[i][ind:ind+this_batch_size])))
+            ind = ind + this_batch_size
             k = k + 1
-            return k, exiting_ls
+            return k, ind, loss
 
-        exiting_ls = tf.zeros([n_pos, *probe_size])
+        loss = tf.constant(0.0)
         k = tf.constant(0)
-        c = lambda i, exitins_ls: tf.less(i, len(probe_pos_batch_ls))
-        _, exiting_ls = tf.while_loop(c, forward_batch, [k, exiting_ls])
+        ind = tf.constant(0)
+        c = lambda i, ind, loss: tf.less(i, len(probe_pos_batch_ls))
+        _, _, loss = tf.while_loop(c, forward_batch, [k, ind, loss])
 
         if probe_circ_mask is not None:
             exiting_ls = exiting_ls * probe_mask
-        loss = tf.reduce_mean(tf.squared_difference(tf.abs(exiting_ls), tf.abs(this_prj_batch[i]))) * n_pos
+        loss = loss * n_pos
 
         return loss
 

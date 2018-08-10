@@ -260,8 +260,12 @@ def fftshift(tensor):
         begin2 = [0] * ndim
         size2 = tensor.shape.as_list()
         size2[i] = p2
-        t1 = tf.slice(tensor, begin1, size1)
-        t2 = tf.slice(tensor, begin2, size2)
+        if size1[0] is None:
+            t1 = tensor[:, begin1[1]:begin1[1]+size1[1], begin1[2]:begin1[2]+size1[2]]
+            t2 = tensor[:, begin2[1]:begin2[1]+size2[1], begin2[2]:begin2[2]+size1[2]]
+        else:
+            t1 = tf.slice(tensor, begin1, size1)
+            t2 = tf.slice(tensor, begin2, size2)
         tensor = tf.concat([t1, t2], axis=i)
     return tensor
 
@@ -279,8 +283,12 @@ def ifftshift(tensor):
         begin2 = [0] * ndim
         size2 = tensor.shape.as_list()
         size2[i] = p2
-        t1 = tf.slice(tensor, begin1, size1)
-        t2 = tf.slice(tensor, begin2, size2)
+        if size1[0] is None:
+            t1 = tensor[:, begin1[1]:begin1[1]+size1[1], begin1[2]:begin1[2]+size1[2]]
+            t2 = tensor[:, begin2[1]:begin2[1]+size2[1], begin2[2]:begin2[2]+size1[2]]
+        else:
+            t1 = tf.slice(tensor, begin1, size1)
+            t2 = tf.slice(tensor, begin2, size2)
         tensor = tf.concat([t1, t2], axis=i)
     return tensor
 
@@ -361,8 +369,8 @@ def multislice_propagate_batch(grid_delta_batch, grid_beta_batch, probe_real, pr
     grid_shape = obj_batch_shape[1:]
     voxel_nm = np.array([psize_cm] * 3) * 1.e7
     # wavefront = tf.convert_to_tensor(wavefront, dtype=tf.complex64, name='wavefront')
-    wavefront = np.zeros([batch_size, obj_batch_shape[1], obj_batch_shape[2]])
-    wavefront = tf.constant(wavefront, dtype='complex64')
+    wavefront = tf.zeros([batch_size, obj_batch_shape[1], obj_batch_shape[2]], dtype='complex64')
+    # wavefront = tf.constant(wavefront, dtype='complex64')
     wavefront = wavefront + (tf.cast(probe_real, tf.complex64) + 1j * tf.cast(probe_imag, tf.complex64))
     lmbda_nm = 1240. / energy_ev
     mean_voxel_nm = np.prod(voxel_nm) ** (1. / 3)
