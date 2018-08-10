@@ -28,29 +28,66 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
 
         # obj_rot = apply_rotation(obj, coord_ls[rand_proj], 'arrsize_64_64_64_ntheta_500')
         obj_rot = tf_rotate(obj, this_theta_batch[i], interpolation='BILINEAR')
-        probe_pos_batch_ls = np.array_split(probe_pos, int(np.ceil(float(n_pos) / hvd.size() / n_dp_batch)))
-        # probe_pos_batch_ls = np.array_split(probe_pos, 6)
         exiting_ls = []
+        subobj_batch_ls = []
+
         for k, pos_batch in enumerate(probe_pos_batch_ls):
             subobj_ls = []
             for j, pos in enumerate(pos_batch):
-                pos = [int(x) for x in pos]
+                # pos = [int(x) for x in pos]
                 # ind = np.reshape([[x, y] for x in range(int(pos[0]) - probe_size_half[0], int(pos[0]) - probe_size_half[0] + probe_size[0])
                 #                   for y in range(int(pos[1]) - probe_size_half[1], int(pos[1]) - probe_size_half[1] + probe_size[1])],
                 #                  [probe_size[0], probe_size[1], 2])
                 # subobj = tf.gather_nd(obj_rot, ind)
                 subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
-                                 pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
-                                 :, :]
+                         pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
+                         :, :]
                 subobj_ls.append(subobj)
 
             subobj_ls = tf.stack(subobj_ls)
-            # good until here
-            exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
+            subobj_batch_ls.append(subobj_ls)
+        subobj_batch_ls = tf.stack(subobj_ls)
+
+        exiting_ls = tf.zeros(n_pos, *probe_size)
+        def forward_batch(k, exiting_ls):
+            subobj_ls = subobj_batch_ls[k]
+            exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real,
+                                                 probe_imag,
                                                  energy_ev, psize_cm * ds_level, h=h, free_prop_cm='inf',
                                                  obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
             exiting_ls.append(exiting)
-        exiting_ls = tf.concat(exiting_ls, 0)
+            k = k + 1
+            return k, exiting_ls
+
+        exiting_ls = tf.zeros([n_pos, *probe_size])
+        k = tf.constant(0)
+        c = lambda i, exitins_ls: tf.less(i, len(probe_pos_batch_ls))
+        _, exiting_ls = tf.while_loop(c, forward_batch, [k, exiting_ls])
+
+
+
+
+
+        # for k, pos_batch in enumerate(probe_pos_batch_ls):
+        #     subobj_ls = []
+        #     for j, pos in enumerate(pos_batch):
+        #         pos = [int(x) for x in pos]
+        #         # ind = np.reshape([[x, y] for x in range(int(pos[0]) - probe_size_half[0], int(pos[0]) - probe_size_half[0] + probe_size[0])
+        #         #                   for y in range(int(pos[1]) - probe_size_half[1], int(pos[1]) - probe_size_half[1] + probe_size[1])],
+        #         #                  [probe_size[0], probe_size[1], 2])
+        #         # subobj = tf.gather_nd(obj_rot, ind)
+        #         subobj = obj_rot[pos[0] - probe_size_half[0]:pos[0] - probe_size_half[0] + probe_size[0],
+        #                          pos[1] - probe_size_half[1]:pos[1] - probe_size_half[1] + probe_size[1],
+        #                          :, :]
+        #         subobj_ls.append(subobj)
+        #
+        #     subobj_ls = tf.stack(subobj_ls)
+        #     # good until here
+        #     exiting = multislice_propagate_batch(subobj_ls[:, :, :, :, 0], subobj_ls[:, :, :, :, 1], probe_real, probe_imag,
+        #                                          energy_ev, psize_cm * ds_level, h=h, free_prop_cm='inf',
+        #                                          obj_batch_shape=[len(pos_batch), *probe_size, obj_size[-1]])
+        #     exiting_ls.append(exiting)
+        # exiting_ls = tf.concat(exiting_ls, 0)
         if probe_circ_mask is not None:
             exiting_ls = exiting_ls * probe_mask
         loss = tf.reduce_mean(tf.squared_difference(tf.abs(exiting_ls), tf.abs(this_prj_batch[i]))) * n_pos
@@ -142,7 +179,7 @@ def reconstruct_ptychography(fname, probe_pos, probe_size, obj_size, theta_st=0,
         n_theta = prj.shape[0]
         theta = -np.linspace(theta_st, theta_end, n_theta, dtype='float32')
         n_pos = len(probe_pos)
-        # probe_pos = tf.convert_to_tensor(probe_pos)
+        probe_pos_batch_ls = np.array_split(probe_pos, int(np.ceil(float(n_pos) / hvd.size() / n_dp_batch)))
         probe_size_half = (np.array(probe_size) / 2).astype('int')
         comm.Barrier()
 
