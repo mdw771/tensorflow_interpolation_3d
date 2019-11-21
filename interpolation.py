@@ -4,6 +4,8 @@ import tensorflow as tf
 def biliniear_interpolation_3d(data, warp):
     """
     Interpolate a 3D array (monochannel).
+    :param data: 3D tensor.
+    :param warp: a list of 3D coordinates to interpolate. 2D tensor with shape (n_points, 3).
     """
     n_pts = warp.shape[0]
     i000 = tf.cast(tf.floor(warp), dtype=tf.int32)
