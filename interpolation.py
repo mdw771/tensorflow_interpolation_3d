@@ -8,6 +8,9 @@ def biliniear_interpolation_3d(data, warp):
     :param warp: a list of 3D coordinates to interpolate. 2D tensor with shape (n_points, 3).
     """
     n_pts = warp.shape[0]
+    # Pad data around to avoid indexing overflow
+    data = tf.pad(data, [[1, 1], [1, 1], [1, 1]], mode='SYMMETRIC')
+    warp = warp + tf.constant([1, 1, 1], dtype='float32')
     i000 = tf.cast(tf.floor(warp), dtype=tf.int32)
     i100 = i000 + tf.constant([1, 0, 0])
     i010 = i000 + tf.constant([0, 1, 0])
@@ -44,11 +47,11 @@ def biliniear_interpolation_3d(data, warp):
     h = tf.transpose(h, perm=[2, 0, 1])
     c = tf.transpose(tf.stack([c000, c100, c010, c110, c001, c101, c011, c111]))
     c = tf.expand_dims(c, -1)
-    a = tf.squeeze(tf.matmul(tf.matrix_inverse(h), c))
-
+    a = tf.matmul(tf.matrix_inverse(h), c)[:, :, 0]
     x = warp[:, 0]
     y = warp[:, 1]
     z = warp[:, 2]
+
     f = a[:, 0] + a[:, 1] * x + a[:, 2] * y + a[:, 3] * z + \
         a[:, 4] * x * y + a[:, 5] * x * z + a[:, 6] * y * z + a[:, 7] * x * y * z
     return f
